@@ -182,12 +182,39 @@ npm start          # start the bot
 
 ## 5. Registering slash commands
 
-```bash
-npm run deploy         # per-guild — appears instantly (recommended)
-npm run deploy:global  # global — can take up to an hour to propagate
+**You do not have to do anything.** The bot registers its own slash commands on every
+startup, so deploying it is enough on its own. On boot you will see:
+
+```
+INFO [bot:registrar] application id: 123456789012345678
+INFO [bot:registrar] guild scope: 111111111111111111,222222222222222222
+INFO [bot:registrar] slash commands to register: 48
+INFO [bot:registrar] guild 111111111111111111: registered 48 command(s)
+INFO [bot:ready] registration: scope=guild app=123456789012345678 commands=48 registered=111111111111111111(48)
 ```
 
-Re-run `npm run deploy` **every time you change a command's name, description or arguments**. Discord caches command definitions, so a renamed option will keep its old shape until you re-register.
+Registration is **idempotent and skipped when nothing changed** - the bot compares a
+fingerprint of the command set against what Discord already has, so a restart costs one
+`GET` per guild and no `PUT`. Set `AUTO_REGISTER_COMMANDS=false` to turn it off.
+
+### Manual registration (fallback)
+
+If you would rather register from your machine - or the bot cannot reach Discord's API -
+the same code is available as a script:
+
+```bash
+npm run deploy           # per-guild - appears instantly (recommended)
+npm run deploy:global    # global - can take up to an hour to propagate
+npm run deploy -- --force  # re-send even if nothing changed
+```
+
+Both paths share one implementation (`src/core/registrar.js`), so they can never drift
+apart. Re-run it **whenever you change a command's name, description or arguments** -
+Discord caches definitions, so a renamed option keeps its old shape until re-registered.
+
+> **Scope:** with `GUILD_IDS` set, commands are registered **per guild** and appear
+> instantly. With `GUILD_IDS` empty they fall back to **global**, which can take up to an
+> hour. For a private bot, always set `GUILD_IDS`.
 
 ---
 
@@ -366,8 +393,10 @@ Highlights:
 
 | Symptom | Cause and fix |
 |---|---|
-| Slash commands do not appear | `GUILD_IDS` does not list the server, or the commands were never registered. Copy the server ID again and re-run `npm run deploy`. |
-| Commands appear but a changed option did not update | Discord caches definitions. Re-run `npm run deploy`. |
+| Slash commands do not appear | Check the startup log for the `[bot:registrar]` lines - they name the application id, the guild scope and the command count. If `guild scope` is empty, `GUILD_IDS` is not set. If registration failed, the error is logged with the reason. |
+| `GUILD_IDS` is set but commands still missing | The bot must actually be **in** that server, and it must have been invited with the **`applications.commands`** scope. Re-invite with the URL from README section 2. |
+| Commands appear but a changed option did not update | Discord caches definitions. Restart the bot, or run `npm run deploy -- --force`. |
+| `Node.js 20 detected without native WebSocket support` | `@supabase/supabase-js` needs a WebSocket implementation and Node 20 has no global one. The `ws` package is a dependency and is wired in automatically - run `npm install` if it is missing. |
 | Bot logs in, but prefix commands and XP do nothing | **Message Content Intent** is off in the Developer Portal. |
 | Join/leave logs and autorole are silent | **Server Members Intent** is off. |
 | `Cannot find module` or a command silently missing | Run `npm run check` — it names the file and the reason. |

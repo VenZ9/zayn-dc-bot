@@ -86,6 +86,11 @@ services:
       # Background scheduler: giveaway endings, reminders, tempban expiry.
       - key: TASKS_ENABLED
         value: "true"
+      # Register slash commands on every boot, so deploying is enough on its own
+      # and `npm run deploy` is only a fallback. Idempotent: an unchanged command
+      # set is detected and skipped, so restarts stay cheap.
+      - key: AUTO_REGISTER_COMMANDS
+        value: "true"
       - key: TASK_INTERVAL_SECONDS
         value: "30"
       - key: LOG_LEVEL

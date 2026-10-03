@@ -98,6 +98,13 @@ const config = {
   tasksEnabled: bool('TASKS_ENABLED', true),
   taskIntervalSeconds: int('TASK_INTERVAL_SECONDS', 30, 10, 3600),
 
+  /**
+   * Register slash commands automatically on every boot. On by default so that
+   * deploying the bot is enough on its own; the registration is idempotent and
+   * skipped when the command set has not changed.
+   */
+  autoRegisterCommands: bool('AUTO_REGISTER_COMMANDS', true),
+
   // ---- Health endpoint ----------------------------------------------------
   healthEnabled: bool('HEALTH_ENABLED', true),
   /** Koyeb injects PORT; when absent we fall back to 8000. */

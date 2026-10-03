@@ -134,10 +134,26 @@ the logs:
 
 The service flips to **Live** once the health check passes.
 
-### One thing to do AFTER the first deploy
+### Slash commands register themselves
 
-Slash commands are registered as **guild commands**, pushed by a script — *not* by the
-running bot. Deploying the service does not publish them. From your machine:
+You do **not** need to do anything after the first deploy. The bot registers its slash
+commands on every startup, so deploying the service is enough on its own. Watch for these
+lines in the logs:
+
+```text
+[registrar] application id: 123456789012345678
+[registrar] guild scope: 111111111111111111,222222222222222222
+[registrar] slash commands to register: 48
+[registrar] guild 111111111111111111: registered 48 command(s)
+[ready]     registration: scope=guild app=123456789012345678 commands=48 registered=111111111111111111(48)
+```
+
+Registration is **idempotent and skipped when nothing changed** — the bot fingerprints the
+command set and compares it with what Discord already has, so a restart costs one `GET` per
+guild and no `PUT`. Set `AUTO_REGISTER_COMMANDS=false` to turn it off.
+
+**Manual fallback.** If the bot cannot reach Discord's API, or you would rather register
+from your machine, the same code is available as a script:
 
 ```bash
 git clone https://github.com/VenZ9/zayn-dc-bot.git
@@ -147,8 +163,9 @@ cp .env.example .env      # fill in DISCORD_TOKEN, CLIENT_ID, GUILD_IDS
 npm run deploy            # per-guild registration → commands appear INSTANTLY
 ```
 
-Re-run `npm run deploy` **whenever a command's name, description or arguments change** —
-Discord caches definitions, so a renamed option keeps its old shape until you re-register.
+Re-run it **whenever a command's name, description or arguments change** — Discord caches
+definitions, so a renamed option keeps its old shape until you re-register. Add `--force`
+to re-send even when nothing changed.
 
 ---
 

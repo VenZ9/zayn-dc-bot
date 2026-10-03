@@ -43,6 +43,34 @@ module.exports = {
       );
     }
 
+    // ---- slash command registration --------------------------------------
+    // Done here, not only in `npm run deploy`, so that deploying the bot is
+    // enough on its own. The most common reason commands "do not show up" is
+    // that the separate local registration step was never run.
+    //
+    // Registration is idempotent and skipped when the command set is unchanged,
+    // so a restart costs at most one GET per scope.
+    if (config.autoRegisterCommands) {
+      try {
+        const registrar = require('../core/registrar');
+        registrar.logContext(client.registry);
+        const summary = await registrar.registerCommands({ registry: client.registry });
+        log.info(registrar.describe(summary));
+        if (!summary.ok) {
+          log.warn(
+            'command registration did not fully succeed - see the errors above. '
+            + 'You can also run `npm run deploy` from your machine.',
+          );
+        }
+      } catch (error) {
+        // Never fatal: the bot still works, the commands may just be stale.
+        log.error('automatic command registration failed:', error);
+        log.warn('run `npm run deploy` locally to register the commands instead.');
+      }
+    } else {
+      log.info('automatic command registration is off (AUTO_REGISTER_COMMANDS=false)');
+    }
+
     // ---- presence --------------------------------------------------------
     // Branding lives here too: "Watching over N servers | ZAYN'S DC".
     try {

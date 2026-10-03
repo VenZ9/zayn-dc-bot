@@ -25,17 +25,62 @@ const log = logger.child('db');
 
 let client = null;
 
-if (config.hasDatabase) {
-  client = createClient(config.supabase.url, config.supabase.key, {
+/**
+ * Build the Supabase client.
+ *
+ * `@supabase/supabase-js` >= 2.100 constructs a Realtime client eagerly, and
+ * Realtime needs a WebSocket implementation. Node 20 has no global `WebSocket`
+ * (it landed in Node 22), so on Node 20 the constructor THROWS:
+ *
+ *   "Node.js 20 detected without native WebSocket support."
+ *
+ * That would take the whole process down at import time, before the bot ever
+ * logs in. We pass the `ws` package explicitly via `realtime.transport`, which
+ * is the documented fix and works on every Node version.
+ *
+ * The bot never uses Realtime (it polls the database on a timer), so this is
+ * purely about getting the constructor to succeed.
+ */
+function buildClient() {
+  if (!config.hasDatabase) {
+    log.warn('Supabase credentials missing - running without persistence.');
+    return null;
+  }
+
+  const options = {
     auth: { persistSession: false, autoRefreshToken: false },
     db: { schema: 'public' },
     global: {
       headers: { 'x-application-name': 'zayn-dc-bot' },
     },
-  });
-} else {
-  log.warn('Supabase credentials missing - running without persistence.');
+  };
+
+  // Supply a WebSocket implementation when the runtime has no global one.
+  if (typeof globalThis.WebSocket === 'undefined') {
+    try {
+      // eslint-disable-next-line global-require
+      const ws = require('ws');
+      options.realtime = { transport: ws };
+    } catch (error) {
+      log.warn(
+        'the "ws" package is not installed and this Node version has no global '
+        + 'WebSocket - Supabase may fail to initialise. Run `npm install ws`.',
+      );
+    }
+  }
+
+  try {
+    return createClient(config.supabase.url, config.supabase.key, options);
+  } catch (error) {
+    // Never let a database client take the bot down: it can still serve every
+    // command that does not touch persistence, and /ready will report the fault.
+    log.error(`could not create the Supabase client: ${error.message}`);
+    log.error('the bot will start without persistence - check SUPABASE_URL / SUPABASE_KEY.');
+    return null;
+  }
 }
+
+client = buildClient();
 
 /** True when a client was created. */
 const isEnabled = () => client !== null;

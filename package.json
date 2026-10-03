@@ -12,6 +12,7 @@
     "deploy": "node deploy-commands.js",
     "check": "node scripts/check.js",
     "check:strict": "node scripts/check.js --strict",
+    "test": "node scripts/test-registrar.js && node scripts/test-ready-registration.js",
     "deploy:global": "node deploy-commands.js --global"
   },
   "keywords": [
@@ -24,6 +25,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
     "discord.js": "^14.16.3",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "ws": "^8.18.0"
   }
 }
