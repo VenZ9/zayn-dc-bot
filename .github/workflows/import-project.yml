@@ -1,0 +1,109 @@
+name: Import project
+
+# One-shot importer.
+#
+# The project is delivered as a ZIP. This workflow downloads it, unpacks it into
+# the repository root, verifies the key files are present, and commits the result
+# to main. It is idempotent: re-running it re-syncs the tree from the ZIP.
+#
+# Trigger it manually from the Actions tab, or with:
+#   gh workflow run import-project.yml -f zip_url=<url>
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_url:
+        description: 'URL of the project ZIP to import'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    name: Import and commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download the ZIP
+        run: |
+          set -euo pipefail
+          curl -fsSL "${{ inputs.zip_url }}" -o /tmp/project.zip
+          echo "downloaded $(stat -c%s /tmp/project.zip) bytes"
+          file /tmp/project.zip
+
+      - name: Extract
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/project
+          unzip -q -o /tmp/project.zip -d /tmp/project
+          echo "extracted $(find /tmp/project -type f | wc -l) file(s)"
+
+      - name: Sync into the repository
+        run: |
+          set -euo pipefail
+          # Mirror the ZIP contents into the repo root. .git and .github are
+          # excluded so the checkout and this workflow survive the sync.
+          rsync -a --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            /tmp/project/ ./
+          echo "--- repository root ---"
+          ls -la
+          echo "--- total files ---"
+          find . -type f -not -path './.git/*' | wc -l
+
+      - name: Verify the import
+        run: |
+          set -euo pipefail
+          missing=0
+          for f in package.json index.js deploy-commands.js Dockerfile fly.toml \
+                   fly-deploy.md README.md .env.example .gitignore .dockerignore \
+                   docker-compose.yml src/db/schema.sql src/core/health.js \
+                   src/config.js scripts/check.js; do
+            if [ ! -f "$f" ]; then
+              echo "MISSING: $f"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "import is incomplete"
+            exit 1
+          fi
+          echo "all key files present"
+
+          # A .env must never be committed - only .env.example.
+          if [ -f .env ]; then
+            echo "ERROR: .env was imported - refusing to commit"
+            exit 1
+          fi
+          echo "no .env present - good"
+
+          # The 13 feature modules must all be there.
+          for m in moderation server tickets analytics welcome roles giveaways \
+                   levels events custom logs config profile; do
+            if [ ! -d "src/modules/$m" ]; then
+              echo "MISSING MODULE: src/modules/$m"
+              exit 1
+            fi
+          done
+          echo "all 13 feature modules present"
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "ZAYN"
+          git config user.email "191755948+VenZ9@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "nothing to commit - the repository already matches the ZIP"
+          else
+            git commit -m "Import complete ZAYN'S DC BOT project (13 modules, Fly.io + Koyeb deploy)"
+            git push origin HEAD:main
+            echo "pushed $(git rev-parse HEAD)"
+          fi
