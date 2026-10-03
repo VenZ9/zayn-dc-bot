@@ -1,0 +1,24 @@
+# Local development / self-hosting helper.  Usage:
+#   cp .env.example .env   # then fill it in
+#   docker compose up --build
+services:
+  bot:
+    build: .
+    image: zayn-dc-bot:latest
+    container_name: zayn-dc-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Bind the health endpoint inside the container.
+      PORT: "8000"
+      HEALTH_ENABLED: "true"
+    ports:
+      - "8000:8000"
+    # The bot keeps no state on disk - everything lives in Supabase - but a
+    # read-only root filesystem is still a good default.
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true

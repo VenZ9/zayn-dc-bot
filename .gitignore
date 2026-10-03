@@ -1,0 +1,44 @@
+# ---- secrets (never commit these) ------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+credentials.json
+
+# ---- Node ------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.pnpm-store/
+
+# ---- build / runtime -------------------------------------------------------
+dist/
+build/
+.next/
+coverage/
+*.tsbuildinfo
+
+# ---- data / transcripts ----------------------------------------------------
+data/
+transcripts/
+*.sqlite
+*.db
+backups/
+!src/db/
+
+# ---- editors / OS ----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# ---- misc ------------------------------------------------------------------
+*.log
+tmp/
+temp/

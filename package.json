@@ -1,0 +1,29 @@
+{
+  "name": "zayn-dc-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-purpose Discord bot (discord.js v14) with 13 feature modules, hybrid slash + prefix commands and Supabase (Postgres) persistence.",
+  "main": "index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "node deploy-commands.js",
+    "check": "node scripts/check.js",
+    "check:strict": "node scripts/check.js --strict",
+    "deploy:global": "node deploy-commands.js --global"
+  },
+  "keywords": [
+    "discord",
+    "discord.js",
+    "bot",
+    "supabase"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  }
+}

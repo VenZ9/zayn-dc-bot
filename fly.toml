@@ -1,0 +1,92 @@
+# ============================================================================
+#  ZAYN'S DC BOT - Fly.io configuration
+#
+#  A Discord bot is a long-lived WebSocket client, not a web app. That shapes
+#  every choice below:
+#
+#    * NO [http_service] / [[services]] block. The bot has no public HTTP
+#      surface, so it gets no public IP and no Anycast address. It is reachable
+#      only over Fly's private 6PN network. The health endpoint still works -
+#      Fly probes it directly on the machine.
+#
+#    * auto_stop_machines = false and min_machines_running = 1. A bot that
+#      scales to zero is a bot that is offline: it would miss every event while
+#      suspended. It must stay up 24/7.
+#
+#    * Exactly ONE machine. Two replicas would open two gateway sessions and
+#      double-fire every scheduled task (giveaways, reminders, tempbans).
+#
+#  Deploy:  fly deploy
+#  Logs:    fly logs
+#  Status:  fly status
+# ============================================================================
+
+app = "zayn-dc-bot"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# ---------------------------------------------------------------------------
+#  Runtime environment
+#
+#  PORT is set explicitly because Fly only injects it automatically when a
+#  service is defined - and we deliberately define none. The health server
+#  binds this port; the [checks] block below probes it.
+# ---------------------------------------------------------------------------
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  HEALTH_ENABLED = "true"
+  TASKS_ENABLED = "true"
+  TASK_INTERVAL_SECONDS = "30"
+  LOG_LEVEL = "info"
+  # Branding - override here or with `fly secrets set`.
+  BRAND_NAME = "ZAYN"
+  BRAND_DISCORD = "ZAYN'S DC - whos.zayn_"
+  BRAND_FOOTER = "Built by ZAYN"
+
+# ---------------------------------------------------------------------------
+#  Health checks
+#
+#  Top-level checks (not service checks) are the right tool for an app with no
+#  public service: they probe the machine directly and do NOT affect request
+#  routing, because there is no routing.
+#
+#  /health returns 200 while the process is alive and 503 once a shutdown has
+#  begun, so Fly drains the machine cleanly on redeploy.
+# ---------------------------------------------------------------------------
+[checks]
+  [checks.health]
+    type = "http"
+    port = 8080
+    method = "GET"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    # Give the gateway handshake and the first Supabase round-trip time to
+    # finish before a failed probe counts against the machine.
+    grace_period = "30s"
+
+# ---------------------------------------------------------------------------
+#  Deploy behaviour
+# ---------------------------------------------------------------------------
+[deploy]
+  # Rolling replaces the machine one at a time. With a single machine this
+  # means: start the new one, wait for its health check, then stop the old.
+  strategy = "rolling"
+  # SIGTERM lets index.js close the gateway and the health server cleanly.
+  kill_signal = "SIGTERM"
+  kill_timeout = "30s"
+
+# ---------------------------------------------------------------------------
+#  Machine sizing
+#
+#  One shared-CPU machine with 512 MB is comfortable: leveling and logging keep
+#  a small in-memory cache, and everything durable lives in Supabase.
+#  `fly scale count 1` enforces the single-machine rule if it ever drifts.
+# ---------------------------------------------------------------------------
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpus = 1
