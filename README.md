@@ -19,9 +19,10 @@ Built by **ZAYN** — branding, quotes, acceptance criteria and deployment are a
 9. [Self-check](#6-self-check)
 10. [Deploying to Fly.io](#7-deploying-to-flyio)
 11. [Deploying to Koyeb](#8-deploying-to-koyeb)
-12. [Docker](#9-docker)
-13. [Command reference](#command-reference)
-14. [Troubleshooting](#troubleshooting)
+12. [Deploying to Render (free tier)](#9-deploying-to-render-free-tier)
+13. [Docker](#10-docker)
+14. [Command reference](#command-reference)
+15. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -33,7 +34,7 @@ Built by **ZAYN** — branding, quotes, acceptance criteria and deployment are a
 | 2 | ⚙️ **Server Management** | Server, user, role and channel information |
 | 3 | 🎫 **Ticket System** | Panels, claiming, priorities, added members, HTML transcripts, statistics |
 | 4 | 📊 **Server Analytics** | Message, member, channel and voice statistics from daily rollups |
-| 5 | 👋 **Welcome & Goodbye** | Greeting messages with placeholders, images, autorole and DM wel­comes |
+| 5 | 👋 **Welcome & Goodbye** | Greeting messages with placeholders, images, autorole and DM welcomes |
 | 6 | 🎭 **Roles & Permissions** | Role CRUD, mass assign, reaction roles and interactive role menus |
 | 7 | 🎁 **Giveaways** | Timed giveaways, requirements, bonus entries, pause, reroll |
 | 8 | 📈 **Leveling & XP** | XP from messages and voice, ranks, leaderboards, level rewards |
@@ -57,6 +58,8 @@ discord-bot/
 ├── Dockerfile                # production image
 ├── fly.toml                  # Fly.io config (always-on, single machine)
 ├── fly-deploy.md             # Fly.io walkthrough
+├── render.yaml               # Render Blueprint (free tier, single instance)
+├── render-deploy.md          # Render walkthrough + keep-alive setup
 ├── docker-compose.yml
 ├── .env.example
 └── src/
@@ -157,7 +160,7 @@ cp .env.example .env
 | `TASKS_ENABLED` | — | Background scheduler (default `true`) |
 | `TASK_INTERVAL_SECONDS` | — | Scheduler tick, 10–3600 (default `30`) |
 | `HEALTH_ENABLED` | — | Health-check HTTP server (default `true`) |
-| `PORT` | — | Port the health server binds. Injected by Fly.io/Koyeb; defaults to `8000` |
+| `PORT` | — | Port the health server binds. Injected by Fly.io/Koyeb/Render; defaults to `8000` |
 | `BRAND_NAME` / `BRAND_DISCORD` / `BRAND_FOOTER` / `BRAND_LINK` | — | Branding used in embeds, presence and `/help` |
 | `LOG_LEVEL` | — | `error`, `warn`, `info` (default), `debug` |
 
@@ -263,11 +266,64 @@ fly logs
 
 > **Register commands from your machine, not from Koyeb.** Run `npm run deploy` locally before deploying, or add a one-off Koyeb job with the `npm run deploy` command. Command registration is a one-time push, not part of the bot's steady state.
 
-**Always-on note:** a Discord bot must stay connected to receive events. Koyeb scales to zero on some plans — make sure the service is set to keep one instance running, otherwise the bot will appear offline.
+**Always-on note:** a Discord bot must stay connected to receive events. Koyeb scales to zero on some plans — make sure the service is set to keep one instance running, otherwise the bot will appear offline. The same applies to Render's free tier, which spins down after 15 idle minutes — see [Deploying to Render](#9-deploying-to-render-free-tier) for the keep-alive setup.
 
 ---
 
-## 9. Docker
+## 9. Deploying to Render (free tier)
+
+Render's free tier runs the bot on a **Web Service** with no credit card. The repository
+ships a [`render.yaml`](render.yaml) Blueprint that configures the whole service, so
+deploying is: connect the repo, paste five secrets, apply — no CLI required.
+
+```bash
+# 1. https://render.com -> Get Started -> sign in with GitHub
+# 2. New + -> Blueprint -> pick VenZ9/zayn-dc-bot
+# 3. Render prompts for the five `sync: false` secrets:
+#      DISCORD_TOKEN, CLIENT_ID, GUILD_IDS, SUPABASE_URL, SUPABASE_KEY
+# 4. Apply -> it builds from the Dockerfile and deploys
+
+# 5. register the slash commands - from your machine, once
+npm run deploy
+```
+
+**Why a Web Service and not a Background Worker:** free-tier Background Workers do not
+exist, and the Web Service provides the HTTP port that both Render's liveness probe and an
+external keep-alive pinger need. The bot is *not* turned into a web app — it opens its
+Discord gateway connection exactly as before. The HTTP listener is the small,
+dependency-free sidecar already in `src/core/health.js`.
+
+**The one step you must not skip:** free Web Services **spin down after 15 minutes of
+inactivity**, and a sleeping bot is an offline bot. Point a free uptime monitor
+(UptimeRobot or cron-job.org) at `https://<your-service>.onrender.com/health` every
+**5 minutes** to keep it awake. Render offers no official way around the spin-down on the
+free tier — this external ping is the workaround, and without it the bot goes silent within
+15 minutes of your last command.
+
+**Health check path:** `/health`. It answers 200 as soon as the process is up, *before* the
+Discord handshake completes — which is what a liveness probe should test, and what the
+keep-alive pinger needs. `/ready` is deliberately stricter (it also requires a successful
+Supabase round-trip) and would fail the deploy during the normal login window, so it is
+**not** used as the health check path.
+
+**Instance count is pinned to 1.** Two instances would open two gateway sessions and
+fire every scheduled task twice — giveaways ending twice, reminders repeating, tempbans
+double-logging.
+
+**After the first deploy**, run `npm run deploy` locally to publish the slash commands —
+command registration is a one-time push from your machine, not part of the bot's steady
+state.
+
+Health endpoints on Render: `/` text summary, `/health` liveness, `/ready` readiness
+(logged in **and** Supabase reachable), `/metrics` Prometheus counters.
+
+> **Full walkthrough:** see [`render-deploy.md`](render-deploy.md) for the complete guide,
+> including the keep-alive setup, free-tier caveats, an env-var reference and a
+> troubleshooting table.
+
+---
+
+## 10. Docker
 
 ```bash
 docker build -t zayn-dc-bot .
@@ -319,8 +375,9 @@ Highlights:
 | `Supabase unreachable` on startup | `SUPABASE_URL` / `SUPABASE_KEY` are wrong, or `schema.sql` has not been run. |
 | Writes fail with a policy error | You are using the `anon` key. Switch to the **service_role** key. |
 | Reminders, giveaways or timed messages never fire | `TASKS_ENABLED=false`. Note that schedules run on the tick interval, so a job fires within one tick of its due time. |
-| Giveaways or reminders fire **twice** | More than one instance is running. On Fly.io: `fly scale count 1`. |
+| Giveaways or reminders fire **twice** | More than one instance is running. On Fly.io: `fly scale count 1`. On Render: confirm `numInstances: 1`. |
 | Bot goes offline after a while on Fly.io | `auto_stop_machines` was flipped back on, or a second machine is competing for the gateway session. Check `fly status`. |
+| Bot goes offline after ~15 min on Render's free tier | Free Web Services spin down when idle. Set up the 5-minute keep-alive ping — see [Deploying to Render](#9-deploying-to-render-free-tier). |
 
 ---
 

@@ -1,0 +1,103 @@
+# ============================================================================
+#  ZAYN'S DC BOT - Render Blueprint
+#
+#  Deploy:  Render dashboard -> New + -> Blueprint -> pick this repo -> Apply
+#  Then fill in the five `sync: false` secrets when Render prompts for them.
+#  Full walkthrough: see render-deploy.md
+#
+#  ---------------------------------------------------------------------------
+#  WHY A "WEB" SERVICE AND NOT A "WORKER"
+#
+#  Render's free tier does not offer background workers (those start on a paid
+#  instance), and a Discord bot is a long-lived process that must never be
+#  suspended. A Web service is the only free type that gives us a stay-alive
+#  container, and it also lends us the HTTP port that the platform's liveness
+#  probe and the external keep-alive pinger both need.
+#
+#  The bot is NOT a web app pretending to be one: it opens its Discord gateway
+#  connection exactly as before. The HTTP listener is the small sidecar already
+#  built into src/core/health.js, and it answers /health with 200 as soon as the
+#  process is up - before the gateway handshake finishes - which is what a
+#  platform liveness probe should test.
+#
+#  ---------------------------------------------------------------------------
+#  WHY EXACTLY ONE INSTANCE
+#
+#  Two instances would open TWO gateway sessions and fire every scheduled task
+#  twice: giveaways would end twice, reminders would repeat, tempbans would
+#  double-log. numInstances is pinned to 1 and autoscaling is deliberately left
+#  unconfigured.
+#
+#  ---------------------------------------------------------------------------
+#  REGION
+#
+#  singapore is closest to the Supabase project (ap-northeast-1 / Tokyo) and to
+#  Indian users, which keeps database round-trips short. Change it if your
+#  Supabase project lives elsewhere - a mismatched region adds latency to every
+#  XP gain and analytics write.
+# ============================================================================
+
+services:
+  - type: web
+    name: zayn-dc-bot
+    runtime: docker
+    # The Dockerfile at the repo root is the existing, vetted production image
+    # (node:20-alpine + tini for signal handling, runs as the non-root `node`
+    # user). Render runs the image's own CMD, i.e. `node index.js`.
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: singapore
+    branch: main
+    # `commit` == "deploy on every push to the branch" (the modern replacement
+    # for the deprecated `autoDeploy: true`).
+    autoDeployTrigger: commit
+    numInstances: 1
+    # Must be a path that answers 200 while the process is alive. /health does;
+    # /ready would NOT, because it stays 503 until the Discord login AND a
+    # Supabase round-trip both succeed - see render-deploy.md.
+    healthCheckPath: /health
+
+    envVars:
+      # ---------------------------------------------------------------------
+      #  Secrets - `sync: false` keeps them out of this file entirely. Render
+      #  prompts for each during the first Blueprint apply and stores them
+      #  encrypted on the service. They are never committed to the repo.
+      # ---------------------------------------------------------------------
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: CLIENT_ID
+        sync: false
+      - key: GUILD_IDS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+
+      # ---------------------------------------------------------------------
+      #  Non-secret defaults. Safe to live in the repo.
+      # ---------------------------------------------------------------------
+      - key: NODE_ENV
+        value: production
+      # Turns on the HTTP listener the liveness probe and keep-alive pinger use.
+      - key: HEALTH_ENABLED
+        value: "true"
+      # Background scheduler: giveaway endings, reminders, tempban expiry.
+      - key: TASKS_ENABLED
+        value: "true"
+      - key: TASK_INTERVAL_SECONDS
+        value: "30"
+      - key: LOG_LEVEL
+        value: info
+      # Branding - drives every embed footer, the presence, /help and /botinfo.
+      - key: BRAND_NAME
+        value: ZAYN
+      - key: BRAND_DISCORD
+        value: "ZAYN'S DC - whos.zayn_"
+      - key: BRAND_FOOTER
+        value: Built by ZAYN
+
+      # NOTE ON PORT: do NOT set it. Render injects PORT automatically for web
+      # services and routes to whatever the container binds on 0.0.0.0. Setting
+      # it by hand is the usual cause of a "no open ports detected" failure.
